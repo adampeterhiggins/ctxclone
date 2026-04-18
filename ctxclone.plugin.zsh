@@ -4,6 +4,8 @@ typeset -g CTXCLONE_CACHE_DIR="$HOME/.cache/ctxclone"
 typeset -g CTXCLONE_REPO_CACHE="$CTXCLONE_CACHE_DIR/repos.txt"
 typeset -g CTXCLONE_USAGE_FILE="$CTXCLONE_CACHE_DIR/recent.txt"
 typeset -g CTXCLONE_CACHE_TTL=86400
+typeset -g CTXCLONE_LIMIT=20
+typeset -g CTXCLONE_CACHE_LIMIT=500
 
 ctxclone() {
   local repo="$1"
@@ -37,7 +39,7 @@ _ctxclone_refresh_cache() {
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
   gh repo list focaldata \
-    --limit 500 \
+    --limit $CTXCLONE_CACHE_LIMIT \
     --json name,pushedAt \
     -q 'sort_by(.pushedAt) | reverse | .[].name' \
     >| "$CTXCLONE_REPO_CACHE.tmp" 2>/dev/null || return 1
@@ -77,7 +79,8 @@ _ctxclone_ranked_repos() {
 }
 
 _ctxclone() {
-  local -a repos
+  local -a repos filtered
+  local limit=$CTXCLONE_LIMIT
 
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
@@ -86,7 +89,9 @@ _ctxclone() {
   fi
 
   repos=("${(@f)$(_ctxclone_ranked_repos)}")
-  _describe 'repo' repos
+  filtered=(${(M)repos:#${PREFIX}*})
+  filtered=(${filtered[1,$limit]})
+  _describe 'repo' filtered
 }
 
 compdef _ctxclone ctxclone
