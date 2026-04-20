@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ctxclone",
+  "description": "Clone focaldata GitHub repos into a .context/ directory for agent context. Supports parallel cloning with progress display and tab completion.",
+  "owner": {
+    "name": "Adam Higgins",
+    "url": "https://github.com/adampeterhiggins"
+  },
+  "plugins": [
+    {
+      "name": "ctxclone",
+      "description": "Skill for using the ctxclone zsh command to pull focaldata repos into .context/ for Claude context.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
