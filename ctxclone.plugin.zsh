@@ -7,6 +7,18 @@ typeset -g CTXCLONE_CACHE_TTL=86400
 typeset -g CTXCLONE_LIMIT=20
 typeset -g CTXCLONE_CACHE_LIMIT=500
 
+_ctxclone_render_status() {
+  local r s
+  for r in $repos; do
+    s=${done_map[$r]}
+    case $s in
+      0) printf '  \033[33m…\033[0m  %s\n' "$r" ;;
+      1) printf '  \033[32m✓\033[0m  %s\n' "$r" ;;
+      2) printf '  \033[31m✗\033[0m  %s\n' "$r" ;;
+    esac
+  done
+}
+
 ctxclone() {
   local base="https://github.com/focaldata"
 
@@ -16,11 +28,49 @@ ctxclone() {
   fi
 
   mkdir -p "$CTXCLONE_CACHE_DIR"
+  setopt LOCAL_OPTIONS NO_MONITOR
 
+  local -a repos=("$@")
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+
+  local -A done_map
   local repo
-  for repo in "$@"; do
-    git clone "$base/$repo.git" ".context/$repo" || return 1
-    _ctxclone_record_usage "$repo"
+
+  for repo in $repos; do
+    done_map[$repo]=0
+    (
+      git clone "$base/$repo.git" ".context/$repo" \
+        >"$tmpdir/$repo.log" 2>&1
+      echo $? >"$tmpdir/$repo.exit"
+    ) &
+  done
+
+  local n=${#repos} remaining=${#repos} rc
+  _ctxclone_render_status
+
+  while (( remaining > 0 )); do
+    sleep 0.2
+    for repo in $repos; do
+      [[ ${done_map[$repo]} != 0 ]] && continue
+      [[ ! -f "$tmpdir/$repo.exit" ]] && continue
+      rc=$(<"$tmpdir/$repo.exit")
+      if (( rc == 0 )); then
+        done_map[$repo]=1
+        _ctxclone_record_usage "$repo"
+      else
+        done_map[$repo]=2
+      fi
+      (( remaining-- ))
+    done
+    printf '\033[%dA' $n
+    _ctxclone_render_status
+  done
+
+  rm -rf "$tmpdir"
+
+  for repo in $repos; do
+    [[ ${done_map[$repo]} == 2 ]] && return 1
   done
 }
 
