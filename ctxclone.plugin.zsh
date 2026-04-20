@@ -8,18 +8,20 @@ typeset -g CTXCLONE_LIMIT=20
 typeset -g CTXCLONE_CACHE_LIMIT=500
 
 ctxclone() {
-  local repo="$1"
   local base="https://github.com/focaldata"
 
-  if [[ -z "$repo" ]]; then
-    echo "Usage: ctxclone <repo-name>"
+  if [[ $# -eq 0 ]]; then
+    echo "Usage: ctxclone <repo-name> [repo-name ...]"
     return 1
   fi
 
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
-  git clone "$base/$repo.git" ".context/$repo" || return 1
-  _ctxclone_record_usage "$repo"
+  local repo
+  for repo in "$@"; do
+    git clone "$base/$repo.git" ".context/$repo" || return 1
+    _ctxclone_record_usage "$repo"
+  done
 }
 
 _ctxclone_record_usage() {
