@@ -7,14 +7,42 @@ typeset -g CTXCLONE_CACHE_TTL=86400
 typeset -g CTXCLONE_LIMIT=20
 typeset -g CTXCLONE_CACHE_LIMIT=500
 
+_ctxclone_read_progress() {
+  local logfile="$1"
+  [[ ! -f "$logfile" ]] && return
+
+  local line pct phase
+  line=$(tr '\r' '\n' < "$logfile" 2>/dev/null \
+    | grep -oE '(Receiving objects|Resolving deltas|Compressing objects|Counting objects|Enumerating objects):[ ]+[0-9]+%' \
+    | tail -1)
+  [[ -z "$line" ]] && return
+
+  pct=$(echo "$line" | grep -oE '[0-9]+%')
+  case "${line%% *}" in
+    Receiving)   phase="receiving" ;;
+    Resolving)   phase="resolving" ;;
+    Compressing) phase="compressing" ;;
+    Counting)    phase="counting" ;;
+    Enumerating) phase="enumerating" ;;
+    *) return ;;
+  esac
+
+  echo "$phase $pct"
+}
+
 _ctxclone_render_status() {
-  local r s
+  local r s prog
   for r in $repos; do
     s=${done_map[$r]}
     case $s in
-      0) printf '  \033[33m…\033[0m  %s\n' "$r" ;;
-      1) printf '  \033[32m✓\033[0m  %s\n' "$r" ;;
-      2) printf '  \033[31m✗\033[0m  %s\n' "$r" ;;
+      0)
+        prog=${progress_map[$r]}
+        [[ -n "$prog" ]] \
+          && printf '  \033[33m…\033[0m  %-40s \033[2m%s\033[0m\033[K\n' "$r" "$prog" \
+          || printf '  \033[33m…\033[0m  %s\033[K\n' "$r"
+        ;;
+      1) printf '  \033[32m✓\033[0m  %s\033[K\n' "$r" ;;
+      2) printf '  \033[31m✗\033[0m  %s\033[K\n' "$r" ;;
     esac
   done
 }
@@ -34,13 +62,14 @@ ctxclone() {
   local tmpdir
   tmpdir="$(mktemp -d)"
 
-  local -A done_map
+  local -A done_map progress_map
   local repo
 
   for repo in $repos; do
     done_map[$repo]=0
+    progress_map[$repo]=""
     (
-      git clone "$base/$repo.git" ".context/$repo" \
+      git clone --progress "$base/$repo.git" ".context/$repo" \
         >"$tmpdir/$repo.log" 2>&1
       echo $? >"$tmpdir/$repo.exit"
     ) &
@@ -52,16 +81,18 @@ ctxclone() {
   while (( remaining > 0 )); do
     sleep 0.2
     for repo in $repos; do
-      [[ ${done_map[$repo]} != 0 ]] && continue
-      [[ ! -f "$tmpdir/$repo.exit" ]] && continue
-      rc=$(<"$tmpdir/$repo.exit")
-      if (( rc == 0 )); then
-        done_map[$repo]=1
-        _ctxclone_record_usage "$repo"
-      else
-        done_map[$repo]=2
+      if [[ ${done_map[$repo]} == 0 ]]; then
+        progress_map[$repo]="$(_ctxclone_read_progress "$tmpdir/$repo.log")"
+        [[ ! -f "$tmpdir/$repo.exit" ]] && continue
+        rc=$(<"$tmpdir/$repo.exit")
+        if (( rc == 0 )); then
+          done_map[$repo]=1
+          _ctxclone_record_usage "$repo"
+        else
+          done_map[$repo]=2
+        fi
+        (( remaining-- ))
       fi
-      (( remaining-- ))
     done
     printf '\033[%dA' $n
     _ctxclone_render_status
