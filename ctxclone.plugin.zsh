@@ -7,6 +7,8 @@ typeset -g CTXCLONE_CACHE_TTL=86400
 typeset -g CTXCLONE_LIMIT=20
 typeset -g CTXCLONE_CACHE_LIMIT=500
 typeset -g CTXCLONE_VSCODE_SOURCE_ROOT="$HOME/Documents/Focaldata/Git"
+typeset -g CTXCLONE_DEFAULT_ORG="focaldata"
+typeset -g CTXCLONE_DEFAULT_CONTEXT_DIR=".context"
 
 _ctxclone_read_progress() {
   local logfile="$1"
@@ -64,17 +66,120 @@ _ctxclone_copy_vscode() {
 }
 
 ctxclone() {
-  local base="https://github.com/focaldata"
+  local action="clone"
+  local org="$CTXCLONE_DEFAULT_ORG"
+  local ctx_dir="$CTXCLONE_DEFAULT_CONTEXT_DIR"
+  local -a repos=()
+  local -a argv=("$@")
+  local i=1 arg val
 
-  if [[ $# -eq 0 ]]; then
-    echo "Usage: ctxclone <repo-name> [repo-name ...]"
+  while (( i <= ${#argv} )); do
+    arg="${argv[$i]}"
+    case "$arg" in
+      -d|--delete)  action="delete" ;;
+      -r|--reclone) action="reclone" ;;
+      -o|--organisation|--organization)
+        (( i++ ))
+        val="${argv[$i]}"
+        [[ -z "$val" ]] && { echo "ctxclone: $arg requires a value" >&2; return 2; }
+        org="$val"
+        ;;
+      --organisation=*|--organization=*)
+        org="${arg#*=}"
+        [[ -z "$org" ]] && { echo "ctxclone: --organisation requires a value" >&2; return 2; }
+        ;;
+      -o=*) org="${arg#*=}" ;;
+      -c|--context-directory)
+        (( i++ ))
+        val="${argv[$i]}"
+        [[ -z "$val" ]] && { echo "ctxclone: $arg requires a value" >&2; return 2; }
+        ctx_dir="$val"
+        ;;
+      --context-directory=*) ctx_dir="${arg#*=}" ;;
+      -c=*) ctx_dir="${arg#*=}" ;;
+      -h|--help)
+        cat <<EOF
+ctxclone — clone org repos into a local context directory
+
+Usage:
+  ctxclone [flags] <repo-name> [repo-name ...]
+
+Flags:
+  -d, --delete                 Delete local ctxcloned repo(s)
+  -r, --reclone                Delete then reclone repo(s)
+  -o, --organisation <org>     GitHub org to clone from (default: $CTXCLONE_DEFAULT_ORG)
+  -c, --context-directory <d>  Parent dir for clones    (default: $CTXCLONE_DEFAULT_CONTEXT_DIR)
+  -h, --help                   Show this help
+
+Notes:
+  - Flags may appear anywhere in the argument list.
+  - Repos clone into <context-directory>/<repo>. .vscode dir copied from
+    \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode if present.
+  - Tab completion ranks by recent usage, cached from \`gh repo list <org>\`.
+
+Related:
+  ctxclone-refresh [org]       Force refresh of the repo name cache.
+
+Examples:
+  ctxclone api web
+  ctxclone -d api
+  ctxclone api -r web
+  ctxclone -o anthropics claude-code
+  ctxclone -c vendor api
+EOF
+        return 0
+        ;;
+      --)
+        (( i++ ))
+        while (( i <= ${#argv} )); do
+          repos+=("${argv[$i]}")
+          (( i++ ))
+        done
+        break
+        ;;
+      -*)
+        echo "ctxclone: unknown flag: $arg" >&2
+        return 2
+        ;;
+      *) repos+=("$arg") ;;
+    esac
+    (( i++ ))
+  done
+
+  local base="https://github.com/$org"
+
+  if (( ${#repos} == 0 )); then
+    echo "Usage: ctxclone [-d|--delete] [-r|--reclone] [-o <org>] [-c <dir>] <repo-name> [repo-name ...]"
     return 1
+  fi
+
+  if [[ "$action" == "delete" ]]; then
+    local repo rc=0
+    for repo in $repos; do
+      if [[ -d "$ctx_dir/$repo" ]]; then
+        if rm -rf "$ctx_dir/$repo"; then
+          printf '  \033[32m✓\033[0m  %s (deleted)\n' "$repo"
+        else
+          printf '  \033[31m✗\033[0m  %s (delete failed)\n' "$repo"
+          rc=1
+        fi
+      else
+        printf '  \033[33m–\033[0m  %s (not found)\n' "$repo"
+      fi
+    done
+    [[ -d "$ctx_dir" ]] && rmdir "$ctx_dir" 2>/dev/null
+    return $rc
+  fi
+
+  if [[ "$action" == "reclone" ]]; then
+    local repo
+    for repo in $repos; do
+      rm -rf "$ctx_dir/$repo"
+    done
   fi
 
   mkdir -p "$CTXCLONE_CACHE_DIR"
   setopt LOCAL_OPTIONS NO_MONITOR
-
-  local -a repos=("$@")
   local tmpdir workspace_tag
   tmpdir="$(mktemp -d)"
   workspace_tag="$(basename "$PWD")"
@@ -86,11 +191,11 @@ ctxclone() {
     done_map[$repo]=0
     progress_map[$repo]=""
     (
-      git clone --progress "$base/$repo.git" ".context/$repo" \
+      git clone --progress "$base/$repo.git" "$ctx_dir/$repo" \
         >"$tmpdir/$repo.log" 2>&1
       rc=$?
       if (( rc == 0 )); then
-        _ctxclone_copy_vscode "$repo" ".context/$repo" "$workspace_tag" \
+        _ctxclone_copy_vscode "$repo" "$ctx_dir/$repo" "$workspace_tag" \
           >>"$tmpdir/$repo.log" 2>&1
       fi
       echo $rc >"$tmpdir/$repo.exit"
@@ -140,31 +245,45 @@ _ctxclone_record_usage() {
   mv "$tmp" "$CTXCLONE_USAGE_FILE"
 }
 
+_ctxclone_cache_path() {
+  local org="${1:-$CTXCLONE_DEFAULT_ORG}"
+  print -r -- "$CTXCLONE_CACHE_DIR/repos-$org.txt"
+}
+
 _ctxclone_refresh_cache() {
+  local org="${1:-$CTXCLONE_DEFAULT_ORG}"
+  local cache
+  cache="$(_ctxclone_cache_path "$org")"
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
-  gh repo list focaldata \
+  gh repo list "$org" \
     --limit $CTXCLONE_CACHE_LIMIT \
     --json name,pushedAt \
     -q 'sort_by(.pushedAt) | reverse | .[].name' \
-    >| "$CTXCLONE_REPO_CACHE.tmp" 2>/dev/null || return 1
+    >| "$cache.tmp" 2>/dev/null || return 1
 
-  mv "$CTXCLONE_REPO_CACHE.tmp" "$CTXCLONE_REPO_CACHE"
+  mv "$cache.tmp" "$cache"
 }
 
 _ctxclone_cache_is_stale() {
-  [[ ! -s "$CTXCLONE_REPO_CACHE" ]] && return 0
+  local org="${1:-$CTXCLONE_DEFAULT_ORG}"
+  local cache
+  cache="$(_ctxclone_cache_path "$org")"
+  [[ ! -s "$cache" ]] && return 0
   local mtime
-  mtime="$(stat -f %m "$CTXCLONE_REPO_CACHE" 2>/dev/null)" || return 0
+  mtime="$(stat -f %m "$cache" 2>/dev/null)" || return 0
   (( EPOCHSECONDS - mtime > CTXCLONE_CACHE_TTL ))
 }
 
 _ctxclone_ranked_repos() {
+  local org="${1:-$CTXCLONE_DEFAULT_ORG}"
+  local cache
+  cache="$(_ctxclone_cache_path "$org")"
   local -a usage repos ranked
   local repo
 
   [[ -f "$CTXCLONE_USAGE_FILE" ]] && usage=("${(@f)$(<"$CTXCLONE_USAGE_FILE")}")
-  [[ -f "$CTXCLONE_REPO_CACHE" ]] && repos=("${(@f)$(<"$CTXCLONE_REPO_CACHE")}")
+  [[ -f "$cache" ]] && repos=("${(@f)$(<"$cache")}")
 
   ranked=()
 
@@ -186,21 +305,49 @@ _ctxclone_ranked_repos() {
 _ctxclone() {
   local -a repos filtered
   local limit=$CTXCLONE_LIMIT
+  local org="$CTXCLONE_DEFAULT_ORG"
+  local i w next
+
+  for (( i=1; i<=${#words}; i++ )); do
+    w="${words[$i]}"
+    case "$w" in
+      -o|--organisation|--organization)
+        next="${words[$((i+1))]}"
+        [[ -n "$next" ]] && org="$next"
+        ;;
+      --organisation=*|--organization=*) org="${w#*=}" ;;
+      -o=*) org="${w#*=}" ;;
+    esac
+  done
 
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
-  if _ctxclone_cache_is_stale; then
-    _ctxclone_refresh_cache
+  if _ctxclone_cache_is_stale "$org"; then
+    _ctxclone_refresh_cache "$org"
   fi
 
-  repos=("${(@f)$(_ctxclone_ranked_repos)}")
-  filtered=(${(M)repos:#${PREFIX}*})
-  filtered=(${filtered[1,$limit]})
-  _describe 'repo' filtered
+  repos=("${(@f)$(_ctxclone_ranked_repos "$org")}")
+
+  _arguments -s -S \
+    '(-d --delete -r --reclone)'{-d,--delete}'[delete local ctxcloned repo(s)]' \
+    '(-d --delete -r --reclone)'{-r,--reclone}'[delete then reclone repo(s)]' \
+    '(-o --organisation --organization)'{-o,--organisation,--organization}'[GitHub org]:org:' \
+    '(-c --context-directory)'{-c,--context-directory}'[parent dir for clones]:dir:_files -/' \
+    '(-h --help)'{-h,--help}'[show usage]' \
+    '*:repo:->repos'
+
+  case $state in
+    repos)
+      filtered=(${(M)repos:#${PREFIX}*})
+      filtered=(${filtered[1,$limit]})
+      _describe 'repo' filtered
+      ;;
+  esac
 }
 
 compdef _ctxclone ctxclone
 
 ctxclone-refresh() {
-  _ctxclone_refresh_cache && echo "ctxclone cache refreshed"
+  local org="${1:-$CTXCLONE_DEFAULT_ORG}"
+  _ctxclone_refresh_cache "$org" && echo "ctxclone cache refreshed ($org)"
 }
