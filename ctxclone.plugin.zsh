@@ -171,8 +171,9 @@ EOF
     return $rc
   fi
 
+  local repo
+
   if [[ "$action" == "reclone" ]]; then
-    local repo
     for repo in $repos; do
       rm -rf "$ctx_dir/$repo"
     done
@@ -185,7 +186,6 @@ EOF
   workspace_tag="$(basename "$PWD")"
 
   local -A done_map progress_map
-  local repo
 
   for repo in $repos; do
     done_map[$repo]=0
