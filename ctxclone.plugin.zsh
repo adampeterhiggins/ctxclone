@@ -6,6 +6,7 @@ typeset -g CTXCLONE_USAGE_FILE="$CTXCLONE_CACHE_DIR/recent.txt"
 typeset -g CTXCLONE_CACHE_TTL=86400
 typeset -g CTXCLONE_LIMIT=20
 typeset -g CTXCLONE_CACHE_LIMIT=500
+typeset -g CTXCLONE_VSCODE_SOURCE_ROOT="$HOME/Documents/Focaldata/Git"
 
 _ctxclone_read_progress() {
   local logfile="$1"
@@ -47,6 +48,21 @@ _ctxclone_render_status() {
   done
 }
 
+_ctxclone_copy_vscode() {
+  local repo="$1" dest="$2" workspace_tag="$3"
+  local src="$CTXCLONE_VSCODE_SOURCE_ROOT/$repo/.vscode"
+
+  [[ ! -d "$src" ]] && return 0
+
+  cp -R "$src" "$dest/.vscode" || return 1
+
+  local f
+  for f in "$dest/.vscode"/*.code-workspace(N); do
+    mv "$f" "$dest/.vscode/$repo-$workspace_tag.code-workspace"
+    break
+  done
+}
+
 ctxclone() {
   local base="https://github.com/focaldata"
 
@@ -59,8 +75,9 @@ ctxclone() {
   setopt LOCAL_OPTIONS NO_MONITOR
 
   local -a repos=("$@")
-  local tmpdir
+  local tmpdir workspace_tag
   tmpdir="$(mktemp -d)"
+  workspace_tag="$(basename "$PWD")"
 
   local -A done_map progress_map
   local repo
@@ -71,7 +88,12 @@ ctxclone() {
     (
       git clone --progress "$base/$repo.git" ".context/$repo" \
         >"$tmpdir/$repo.log" 2>&1
-      echo $? >"$tmpdir/$repo.exit"
+      rc=$?
+      if (( rc == 0 )); then
+        _ctxclone_copy_vscode "$repo" ".context/$repo" "$workspace_tag" \
+          >>"$tmpdir/$repo.log" 2>&1
+      fi
+      echo $rc >"$tmpdir/$repo.exit"
     ) &
   done
 
