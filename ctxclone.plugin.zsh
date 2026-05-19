@@ -76,7 +76,7 @@ ctxclone() {
   while (( i <= ${#argv} )); do
     arg="${argv[$i]}"
     case "$arg" in
-      -d|--delete)  action="delete" ;;
+      -rm|--delete) action="delete" ;;
       -r|--reclone) action="reclone" ;;
       -o|--organisation|--organization)
         (( i++ ))
@@ -89,14 +89,14 @@ ctxclone() {
         [[ -z "$org" ]] && { echo "ctxclone: --organisation requires a value" >&2; return 2; }
         ;;
       -o=*) org="${arg#*=}" ;;
-      -c|--context-directory)
+      -d|--directory)
         (( i++ ))
         val="${argv[$i]}"
         [[ -z "$val" ]] && { echo "ctxclone: $arg requires a value" >&2; return 2; }
         ctx_dir="$val"
         ;;
-      --context-directory=*) ctx_dir="${arg#*=}" ;;
-      -c=*) ctx_dir="${arg#*=}" ;;
+      --directory=*) ctx_dir="${arg#*=}" ;;
+      -d=*) ctx_dir="${arg#*=}" ;;
       -h|--help)
         cat <<EOF
 ctxclone — clone org repos into a local context directory
@@ -105,15 +105,15 @@ Usage:
   ctxclone [flags] <repo-name> [repo-name ...]
 
 Flags:
-  -d, --delete                 Delete local ctxcloned repo(s)
-  -r, --reclone                Delete then reclone repo(s)
-  -o, --organisation <org>     GitHub org to clone from (default: $CTXCLONE_DEFAULT_ORG)
-  -c, --context-directory <d>  Parent dir for clones    (default: $CTXCLONE_DEFAULT_CONTEXT_DIR)
-  -h, --help                   Show this help
+  -rm, --delete                 Delete local ctxcloned repo(s)
+  -r, --reclone                 Delete then reclone repo(s)
+  -o, --organisation <org>      GitHub org to clone from (default: $CTXCLONE_DEFAULT_ORG)
+  -d, --directory <dir>        Parent dir for clones; relative paths use cwd (default: $CTXCLONE_DEFAULT_CONTEXT_DIR)
+  -h, --help                    Show this help
 
 Notes:
   - Flags may appear anywhere in the argument list.
-  - Repos clone into <context-directory>/<repo>. .vscode dir copied from
+  - Repos clone into <directory>/<repo>. .vscode dir copied from
     \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode if present.
   - Tab completion ranks by recent usage, cached from \`gh repo list <org>\`.
 
@@ -122,10 +122,10 @@ Related:
 
 Examples:
   ctxclone api web
-  ctxclone -d api
+  ctxclone -rm api
   ctxclone api -r web
   ctxclone -o anthropics claude-code
-  ctxclone -c vendor api
+  ctxclone -d vendor api
 EOF
         return 0
         ;;
@@ -149,7 +149,7 @@ EOF
   local base="https://github.com/$org"
 
   if (( ${#repos} == 0 )); then
-    echo "Usage: ctxclone [-d|--delete] [-r|--reclone] [-o <org>] [-c <dir>] <repo-name> [repo-name ...]"
+    echo "Usage: ctxclone [-rm|--delete] [-r|--reclone] [-o <org>] [-d <dir>] <repo-name> [repo-name ...]"
     return 1
   fi
 
@@ -329,10 +329,10 @@ _ctxclone() {
   repos=("${(@f)$(_ctxclone_ranked_repos "$org")}")
 
   _arguments -s -S \
-    '(-d --delete -r --reclone)'{-d,--delete}'[delete local ctxcloned repo(s)]' \
-    '(-d --delete -r --reclone)'{-r,--reclone}'[delete then reclone repo(s)]' \
+    '(-rm --delete -r --reclone)'{-rm,--delete}'[delete local ctxcloned repo(s)]' \
+    '(-rm --delete -r --reclone)'{-r,--reclone}'[delete then reclone repo(s)]' \
     '(-o --organisation --organization)'{-o,--organisation,--organization}'[GitHub org]:org:' \
-    '(-c --context-directory)'{-c,--context-directory}'[parent dir for clones]:dir:_files -/' \
+    '(-d --directory)'{-d,--directory}'[parent dir for clones]:dir:_files -/' \
     '(-h --help)'{-h,--help}'[show usage]' \
     '*:repo:->repos'
 

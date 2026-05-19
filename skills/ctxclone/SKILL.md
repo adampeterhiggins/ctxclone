@@ -17,7 +17,7 @@
 ctxclone <repo-name> [repo-name ...]
 ```
 
-Repos are cloned to `.context/<repo-name>/` in the current directory.
+Repos are cloned to `.context/<repo-name>/` under the current working directory (override with `-d` / `--directory <dir>`). Remove a cloned copy with `-rm` / `--delete`.
 
 Multiple repos clone in parallel with a live progress display.
 
