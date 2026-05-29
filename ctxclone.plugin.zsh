@@ -327,6 +327,14 @@ _ctxclone() {
     esac
   done
 
+  local cur_repo
+  cur_repo="$(git config --get remote.origin.url 2>/dev/null)"
+  if [[ -n "$cur_repo" ]]; then
+    cur_repo="${cur_repo##*/}"
+    cur_repo="${cur_repo%.git}"
+    seen+=("$cur_repo")
+  fi
+
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
   if _ctxclone_cache_is_stale "$org"; then
