@@ -303,20 +303,27 @@ _ctxclone_ranked_repos() {
 }
 
 _ctxclone() {
-  local -a repos filtered
+  local -a repos filtered seen
   local limit=$CTXCLONE_LIMIT
   local org="$CTXCLONE_DEFAULT_ORG"
-  local i w next
+  local i w next s
 
-  for (( i=1; i<=${#words}; i++ )); do
+  for (( i=2; i<=${#words}; i++ )); do
     w="${words[$i]}"
     case "$w" in
       -o|--organisation|--organization)
         next="${words[$((i+1))]}"
         [[ -n "$next" ]] && org="$next"
+        (( i++ ))
         ;;
       --organisation=*|--organization=*) org="${w#*=}" ;;
       -o=*) org="${w#*=}" ;;
+      -d|--directory) (( i++ )) ;;
+      -*) ;;
+      *)
+        (( i == CURRENT )) && continue
+        seen+=("$w")
+        ;;
     esac
   done
 
@@ -339,6 +346,9 @@ _ctxclone() {
   case $state in
     repos)
       filtered=(${(M)repos:#${PREFIX}*})
+      for s in $seen; do
+        filtered=(${filtered:#$s})
+      done
       filtered=(${filtered[1,$limit]})
       _describe 'repo' filtered
       ;;
