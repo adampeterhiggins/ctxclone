@@ -34,18 +34,24 @@ _ctxclone_read_progress() {
 }
 
 _ctxclone_render_status() {
-  local r s prog
+  local r s prog label folder
   for r in $repos; do
+    folder="${name_map[$r]:-$r}"
+    if [[ "$folder" == "$r" ]]; then
+      label="$r"
+    else
+      label="$r → $folder"
+    fi
     s=${done_map[$r]}
     case $s in
       0)
         prog=${progress_map[$r]}
         [[ -n "$prog" ]] \
-          && printf '  \033[33m…\033[0m  %-40s \033[2m%s\033[0m\033[K\n' "$r" "$prog" \
-          || printf '  \033[33m…\033[0m  %s\033[K\n' "$r"
+          && printf '  \033[33m…\033[0m  %-40s \033[2m%s\033[0m\033[K\n' "$label" "$prog" \
+          || printf '  \033[33m…\033[0m  %s\033[K\n' "$label"
         ;;
-      1) printf '  \033[32m✓\033[0m  %s\033[K\n' "$r" ;;
-      2) printf '  \033[31m✗\033[0m  %s\033[K\n' "$r" ;;
+      1) printf '  \033[32m✓\033[0m  %s\033[K\n' "$label" ;;
+      2) printf '  \033[31m✗\033[0m  %s\033[K\n' "$label" ;;
     esac
   done
 }
@@ -70,8 +76,9 @@ ctxclone() {
   local org="$CTXCLONE_DEFAULT_ORG"
   local ctx_dir="$CTXCLONE_DEFAULT_CONTEXT_DIR"
   local -a repos=()
+  local -A name_map=()
   local -a argv=("$@")
-  local i=1 arg val
+  local i=1 arg val pending_name="" last_repo=""
 
   while (( i <= ${#argv} )); do
     arg="${argv[$i]}"
@@ -97,6 +104,33 @@ ctxclone() {
         ;;
       --directory=*) ctx_dir="${arg#*=}" ;;
       -d=*) ctx_dir="${arg#*=}" ;;
+      -n|--name)
+        (( i++ ))
+        val="${argv[$i]}"
+        [[ -z "$val" ]] && { echo "ctxclone: $arg requires a value" >&2; return 2; }
+        if [[ -n "$last_repo" ]]; then
+          name_map[$last_repo]="$val"
+          last_repo=""
+        else
+          pending_name="$val"
+        fi
+        ;;
+      --name=*) val="${arg#*=}"; [[ -z "$val" ]] && { echo "ctxclone: --name requires a value" >&2; return 2; }
+        if [[ -n "$last_repo" ]]; then
+          name_map[$last_repo]="$val"
+          last_repo=""
+        else
+          pending_name="$val"
+        fi
+        ;;
+      -n=*) val="${arg#*=}"; [[ -z "$val" ]] && { echo "ctxclone: -n requires a value" >&2; return 2; }
+        if [[ -n "$last_repo" ]]; then
+          name_map[$last_repo]="$val"
+          last_repo=""
+        else
+          pending_name="$val"
+        fi
+        ;;
       -h|--help)
         cat <<EOF
 ctxclone — clone org repos into a local context directory
@@ -109,11 +143,12 @@ Flags:
   -r, --reclone                 Delete then reclone repo(s)
   -o, --organisation <org>      GitHub org to clone from (default: $CTXCLONE_DEFAULT_ORG)
   -d, --directory <dir>        Parent dir for clones; relative paths use cwd (default: $CTXCLONE_DEFAULT_CONTEXT_DIR)
+  -n, --name <folder>          Local folder name (default: repo name); applies to the next repo, or the previous one if given after it
   -h, --help                    Show this help
 
 Notes:
   - Flags may appear anywhere in the argument list.
-  - Repos clone into <directory>/<repo>. .vscode dir copied from
+  - Repos clone into <directory>/<folder>. .vscode dir copied from
     \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode if present.
   - Tab completion ranks by recent usage, cached from \`gh repo list <org>\`.
 
@@ -126,6 +161,8 @@ Examples:
   ctxclone api -r web
   ctxclone -o anthropics claude-code
   ctxclone -d vendor api
+  ctxclone -n api-context platform-api
+  ctxclone platform-api -n api-context
 EOF
         return 0
         ;;
@@ -141,30 +178,45 @@ EOF
         echo "ctxclone: unknown flag: $arg" >&2
         return 2
         ;;
-      *) repos+=("$arg") ;;
+      *)
+        repos+=("$arg")
+        if [[ -n "$pending_name" ]]; then
+          name_map[$arg]="$pending_name"
+          pending_name=""
+        else
+          name_map[$arg]="${name_map[$arg]:-$arg}"
+        fi
+        last_repo="$arg"
+        ;;
     esac
     (( i++ ))
   done
 
+  if [[ -n "$pending_name" ]]; then
+    echo "ctxclone: -n/--name requires a repo name" >&2
+    return 2
+  fi
+
   local base="https://github.com/$org"
 
   if (( ${#repos} == 0 )); then
-    echo "Usage: ctxclone [-rm|--delete] [-r|--reclone] [-o <org>] [-d <dir>] <repo-name> [repo-name ...]"
+    echo "Usage: ctxclone [-rm|--delete] [-r|--reclone] [-o <org>] [-d <dir>] [-n <folder>] <repo-name> [repo-name ...]"
     return 1
   fi
 
   if [[ "$action" == "delete" ]]; then
-    local repo rc=0
+    local repo folder rc=0
     for repo in $repos; do
-      if [[ -d "$ctx_dir/$repo" ]]; then
-        if rm -rf "$ctx_dir/$repo"; then
-          printf '  \033[32m✓\033[0m  %s (deleted)\n' "$repo"
+      folder="${name_map[$repo]:-$repo}"
+      if [[ -d "$ctx_dir/$folder" ]]; then
+        if rm -rf "$ctx_dir/$folder"; then
+          printf '  \033[32m✓\033[0m  %s (deleted)\n' "$folder"
         else
-          printf '  \033[31m✗\033[0m  %s (delete failed)\n' "$repo"
+          printf '  \033[31m✗\033[0m  %s (delete failed)\n' "$folder"
           rc=1
         fi
       else
-        printf '  \033[33m–\033[0m  %s (not found)\n' "$repo"
+        printf '  \033[33m–\033[0m  %s (not found)\n' "$folder"
       fi
     done
     [[ -d "$ctx_dir" ]] && rmdir "$ctx_dir" 2>/dev/null
@@ -174,8 +226,10 @@ EOF
   local repo
 
   if [[ "$action" == "reclone" ]]; then
+    local folder
     for repo in $repos; do
-      rm -rf "$ctx_dir/$repo"
+      folder="${name_map[$repo]:-$repo}"
+      rm -rf "$ctx_dir/$folder"
     done
   fi
 
@@ -187,15 +241,17 @@ EOF
 
   local -A done_map progress_map
 
+  local folder
   for repo in $repos; do
+    folder="${name_map[$repo]:-$repo}"
     done_map[$repo]=0
     progress_map[$repo]=""
     (
-      git clone --progress "$base/$repo.git" "$ctx_dir/$repo" \
+      git clone --progress "$base/$repo.git" "$ctx_dir/$folder" \
         >"$tmpdir/$repo.log" 2>&1
       rc=$?
       if (( rc == 0 )); then
-        _ctxclone_copy_vscode "$repo" "$ctx_dir/$repo" "$workspace_tag" \
+        _ctxclone_copy_vscode "$repo" "$ctx_dir/$folder" "$workspace_tag" \
           >>"$tmpdir/$repo.log" 2>&1
       fi
       echo $rc >"$tmpdir/$repo.exit"
@@ -319,6 +375,9 @@ _ctxclone() {
       --organisation=*|--organization=*) org="${w#*=}" ;;
       -o=*) org="${w#*=}" ;;
       -d|--directory) (( i++ )) ;;
+      -n|--name) (( i++ )) ;;
+      --name=*) ;;
+      -n=*) ;;
       -*) ;;
       *)
         (( i == CURRENT )) && continue
@@ -348,6 +407,7 @@ _ctxclone() {
     '(-rm --delete -r --reclone)'{-r,--reclone}'[delete then reclone repo(s)]' \
     '(-o --organisation --organization)'{-o,--organisation,--organization}'[GitHub org]:org:' \
     '(-d --directory)'{-d,--directory}'[parent dir for clones]:dir:_files -/' \
+    '(-n --name)'{-n,--name}'[local folder name for next/previous repo]:folder:_files -/' \
     '(-h --help)'{-h,--help}'[show usage]' \
     '*:repo:->repos'
 

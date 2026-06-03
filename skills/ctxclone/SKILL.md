@@ -14,10 +14,10 @@
 ## Usage
 
 ```zsh
-ctxclone <repo-name> [repo-name ...]
+ctxclone [flags] <repo-name> [repo-name ...]
 ```
 
-Repos are cloned to `.context/<repo-name>/` under the current working directory (override with `-d` / `--directory <dir>`). Remove a cloned copy with `-rm` / `--delete`.
+Repos are cloned to `.context/<folder>/` under the current working directory (override parent with `-d` / `--directory <dir>`). The folder defaults to the repo name; override with `-n` / `--name <folder>` (applies to the next repo, or the previous one if the flag comes after it). Remove a cloned copy with `-rm` / `--delete` (use the local folder name).
 
 Multiple repos clone in parallel with a live progress display.
 
@@ -28,6 +28,10 @@ Tab completion is available — it fetches the full list of focaldata repos via 
 ```zsh
 # Clone a single repo
 ctxclone platform-api
+
+# Clone under a custom folder name
+ctxclone -n api-context platform-api
+ctxclone platform-api -n api-context
 
 # Clone several repos at once
 ctxclone platform-api data-pipeline auth-service
