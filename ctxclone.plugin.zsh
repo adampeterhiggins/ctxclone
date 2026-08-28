@@ -425,6 +425,16 @@ _ctxclone() {
 
 compdef _ctxclone ctxclone
 
+# A later `compinit` in ~/.zshrc (appended by tool installers) sources a stale
+# zcompdump, which reassigns $_comps wholesale and drops this binding. Re-assert
+# it at the first prompt, once .zshrc has finished running.
+_ctxclone_ensure_compdef() {
+  (( $+functions[compdef] )) || return 0
+  [[ -n "${_comps[ctxclone]}" ]] && return 0
+  compdef _ctxclone ctxclone
+}
+autoload -Uz add-zsh-hook && add-zsh-hook precmd _ctxclone_ensure_compdef
+
 ctxclone-refresh() {
   local org="${1:-$CTXCLONE_DEFAULT_ORG}"
   _ctxclone_refresh_cache "$org" && echo "ctxclone cache refreshed ($org)"
