@@ -6,6 +6,7 @@ zmodload zsh/complist
 : "${CTXCLONE_CACHE_TTL:=86400}"
 : "${CTXCLONE_LIMIT:=20}"
 : "${CTXCLONE_CACHE_LIMIT:=500}"
+: "${CTXCLONE_COPY_VSCODE:=}"
 : "${CTXCLONE_VSCODE_SOURCE_ROOT:=}"
 : "${CTXCLONE_DEFAULT_ORG:=}"
 : "${CTXCLONE_DEFAULT_CONTEXT_DIR:=.context}"
@@ -56,8 +57,16 @@ _ctxclone_render_status() {
   done
 }
 
+_ctxclone_vscode_enabled() {
+  case "${CTXCLONE_COPY_VSCODE:l}" in
+    ""|0|false|no|off) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 _ctxclone_copy_vscode() {
   local repo="$1" dest="$2" workspace_tag="$3"
+  _ctxclone_vscode_enabled || return 0
   [[ -z "$CTXCLONE_VSCODE_SOURCE_ROOT" ]] && return 0
   local src="$CTXCLONE_VSCODE_SOURCE_ROOT/$repo/.vscode"
 
@@ -150,7 +159,7 @@ Flags:
 Notes:
   - Flags may appear anywhere in the argument list.
   - Repos clone into <directory>/<folder>. .vscode dir copied from
-    \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode when that var is set.
+    \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode when \$CTXCLONE_COPY_VSCODE is on.
   - Set \$CTXCLONE_DEFAULT_ORG (e.g. in ~/.zshrc) to make -o optional.
   - Tab completion ranks by recent usage, cached from \`gh repo list <org>\`.
 
@@ -209,6 +218,10 @@ EOF
   if [[ "$action" != "delete" && -z "$org" ]]; then
     echo "ctxclone: no org specified — pass -o <org> or set CTXCLONE_DEFAULT_ORG" >&2
     return 2
+  fi
+
+  if [[ "$action" != "delete" ]] && _ctxclone_vscode_enabled && [[ -z "$CTXCLONE_VSCODE_SOURCE_ROOT" ]]; then
+    echo "ctxclone: CTXCLONE_COPY_VSCODE is on but CTXCLONE_VSCODE_SOURCE_ROOT is empty — skipping .vscode copy" >&2
   fi
 
   if [[ "$action" == "delete" ]]; then

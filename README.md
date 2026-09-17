@@ -76,7 +76,8 @@ Set these in `~/.zshrc` **before** the plugin loads (i.e. before
 | --- | --- | --- |
 | `CTXCLONE_DEFAULT_ORG` | *(unset)* | Default GitHub org. When unset, `-o <org>` is required. |
 | `CTXCLONE_DEFAULT_CONTEXT_DIR` | `.context` | Directory repos are cloned into |
-| `CTXCLONE_VSCODE_SOURCE_ROOT` | *(unset)* | When set, `<root>/<repo>/.vscode` is copied into each new clone (workspace files are renamed `<repo>-<cwd>.code-workspace`) |
+| `CTXCLONE_COPY_VSCODE` | *(off)* | Set to `1` (or `true`/`yes`/`on`) to copy `.vscode` settings into each new clone |
+| `CTXCLONE_VSCODE_SOURCE_ROOT` | *(unset)* | Directory of existing checkouts whose `<repo>/.vscode` is copied when `CTXCLONE_COPY_VSCODE` is on (workspace files are renamed `<repo>-<cwd>.code-workspace`) |
 | `CTXCLONE_CACHE_DIR` | `~/.cache/ctxclone` | Cache location for repo lists and usage ranking |
 | `CTXCLONE_CACHE_TTL` | `86400` | Seconds before the repo list is refetched |
 | `CTXCLONE_LIMIT` | `20` | Max completion suggestions |

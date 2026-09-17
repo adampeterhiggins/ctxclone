@@ -48,7 +48,8 @@ Set in `~/.zshrc` before the plugin loads:
 
 - `CTXCLONE_DEFAULT_ORG` — default GitHub org, so `-o` can be omitted
 - `CTXCLONE_DEFAULT_CONTEXT_DIR` — clone destination (default `.context`)
-- `CTXCLONE_VSCODE_SOURCE_ROOT` — when set, `<root>/<repo>/.vscode` is copied into each new clone
+- `CTXCLONE_COPY_VSCODE` — set to `1` to copy `.vscode` settings into each new clone (off by default)
+- `CTXCLONE_VSCODE_SOURCE_ROOT` — directory of existing checkouts to copy `<repo>/.vscode` from (required for the copy)
 
 ## Refreshing the repo cache
 
