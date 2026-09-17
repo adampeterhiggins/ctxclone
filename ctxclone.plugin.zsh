@@ -1,14 +1,14 @@
 zmodload zsh/complist
 
-typeset -g CTXCLONE_CACHE_DIR="$HOME/.cache/ctxclone"
-typeset -g CTXCLONE_REPO_CACHE="$CTXCLONE_CACHE_DIR/repos.txt"
-typeset -g CTXCLONE_USAGE_FILE="$CTXCLONE_CACHE_DIR/recent.txt"
-typeset -g CTXCLONE_CACHE_TTL=86400
-typeset -g CTXCLONE_LIMIT=20
-typeset -g CTXCLONE_CACHE_LIMIT=500
-typeset -g CTXCLONE_VSCODE_SOURCE_ROOT="$HOME/Documents/Focaldata/Git"
-typeset -g CTXCLONE_DEFAULT_ORG="focaldata"
-typeset -g CTXCLONE_DEFAULT_CONTEXT_DIR=".context"
+: "${CTXCLONE_CACHE_DIR:=$HOME/.cache/ctxclone}"
+: "${CTXCLONE_REPO_CACHE:=$CTXCLONE_CACHE_DIR/repos.txt}"
+: "${CTXCLONE_USAGE_FILE:=$CTXCLONE_CACHE_DIR/recent.txt}"
+: "${CTXCLONE_CACHE_TTL:=86400}"
+: "${CTXCLONE_LIMIT:=20}"
+: "${CTXCLONE_CACHE_LIMIT:=500}"
+: "${CTXCLONE_VSCODE_SOURCE_ROOT:=}"
+: "${CTXCLONE_DEFAULT_ORG:=}"
+: "${CTXCLONE_DEFAULT_CONTEXT_DIR:=.context}"
 
 _ctxclone_read_progress() {
   local logfile="$1"
@@ -58,6 +58,7 @@ _ctxclone_render_status() {
 
 _ctxclone_copy_vscode() {
   local repo="$1" dest="$2" workspace_tag="$3"
+  [[ -z "$CTXCLONE_VSCODE_SOURCE_ROOT" ]] && return 0
   local src="$CTXCLONE_VSCODE_SOURCE_ROOT/$repo/.vscode"
 
   [[ ! -d "$src" ]] && return 0
@@ -141,7 +142,7 @@ Usage:
 Flags:
   -rm, --delete                 Delete local ctxcloned repo(s)
   -r, --reclone                 Delete then reclone repo(s)
-  -o, --organisation <org>      GitHub org to clone from (default: $CTXCLONE_DEFAULT_ORG)
+  -o, --organisation <org>      GitHub org to clone from (default: ${CTXCLONE_DEFAULT_ORG:-none — set \$CTXCLONE_DEFAULT_ORG})
   -d, --directory <dir>        Parent dir for clones; relative paths use cwd (default: $CTXCLONE_DEFAULT_CONTEXT_DIR)
   -n, --name <folder>          Local folder name (default: repo name); applies to the next repo, or the previous one if given after it
   -h, --help                    Show this help
@@ -149,7 +150,8 @@ Flags:
 Notes:
   - Flags may appear anywhere in the argument list.
   - Repos clone into <directory>/<folder>. .vscode dir copied from
-    \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode if present.
+    \$CTXCLONE_VSCODE_SOURCE_ROOT/<repo>/.vscode when that var is set.
+  - Set \$CTXCLONE_DEFAULT_ORG (e.g. in ~/.zshrc) to make -o optional.
   - Tab completion ranks by recent usage, cached from \`gh repo list <org>\`.
 
 Related:
@@ -202,6 +204,11 @@ EOF
   if (( ${#repos} == 0 )); then
     echo "Usage: ctxclone [-rm|--delete] [-r|--reclone] [-o <org>] [-d <dir>] [-n <folder>] <repo-name> [repo-name ...]"
     return 1
+  fi
+
+  if [[ "$action" != "delete" && -z "$org" ]]; then
+    echo "ctxclone: no org specified — pass -o <org> or set CTXCLONE_DEFAULT_ORG" >&2
+    return 2
   fi
 
   if [[ "$action" == "delete" ]]; then
@@ -396,11 +403,12 @@ _ctxclone() {
 
   mkdir -p "$CTXCLONE_CACHE_DIR"
 
-  if _ctxclone_cache_is_stale "$org"; then
-    _ctxclone_refresh_cache "$org"
+  if [[ -n "$org" ]]; then
+    if _ctxclone_cache_is_stale "$org"; then
+      _ctxclone_refresh_cache "$org"
+    fi
+    repos=("${(@f)$(_ctxclone_ranked_repos "$org")}")
   fi
-
-  repos=("${(@f)$(_ctxclone_ranked_repos "$org")}")
 
   _arguments -s -S \
     '(-rm --delete -r --reclone)'{-rm,--delete}'[delete local ctxcloned repo(s)]' \
@@ -437,5 +445,9 @@ autoload -Uz add-zsh-hook && add-zsh-hook precmd _ctxclone_ensure_compdef
 
 ctxclone-refresh() {
   local org="${1:-$CTXCLONE_DEFAULT_ORG}"
+  if [[ -z "$org" ]]; then
+    echo "ctxclone-refresh: no org specified — pass an org or set CTXCLONE_DEFAULT_ORG" >&2
+    return 2
+  fi
   _ctxclone_refresh_cache "$org" && echo "ctxclone cache refreshed ($org)"
 }

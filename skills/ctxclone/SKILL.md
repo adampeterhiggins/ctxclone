@@ -2,13 +2,13 @@
 
 ## What it does
 
-`ctxclone` is a zsh command that clones one or more repos from the `focaldata` GitHub org into a `.context/` subdirectory of the current working directory. It is used to pull in repository source code as context for AI agents (like Claude) without polluting the working tree.
+`ctxclone` is a zsh command that clones one or more repos from a GitHub org into a `.context/` subdirectory of the current working directory. It is used to pull in repository source code as context for AI agents (like Claude) without polluting the working tree.
 
 ## When to suggest it
 
-- The user wants to give Claude context from another focaldata repo
+- The user wants to give Claude context from another repo in their GitHub org
 - The user says something like "pull in the X repo", "add context from Y", or "clone Z for context"
-- The user is working on a task that spans multiple focaldata repos
+- The user is working on a task that spans multiple repos
 - The user asks Claude to look at code that lives in a different repo
 
 ## Usage
@@ -21,13 +21,18 @@ Repos are cloned to `.context/<folder>/` under the current working directory (ov
 
 Multiple repos clone in parallel with a live progress display.
 
-Tab completion is available — it fetches the full list of focaldata repos via `gh` and ranks results by recent usage.
+The GitHub org comes from `-o` / `--organisation <org>`, or the `CTXCLONE_DEFAULT_ORG` environment variable. If neither is set, `-o` is required.
+
+Tab completion is available — it fetches the full repo list for the configured org via `gh` and ranks results by recent usage.
 
 ## Examples
 
 ```zsh
-# Clone a single repo
+# Clone a single repo (uses CTXCLONE_DEFAULT_ORG)
 ctxclone platform-api
+
+# Clone from a specific org
+ctxclone -o myorg platform-api
 
 # Clone under a custom folder name
 ctxclone -n api-context platform-api
@@ -37,16 +42,23 @@ ctxclone platform-api -n api-context
 ctxclone platform-api data-pipeline auth-service
 ```
 
+## Configuration
+
+Set in `~/.zshrc` before the plugin loads:
+
+- `CTXCLONE_DEFAULT_ORG` — default GitHub org, so `-o` can be omitted
+- `CTXCLONE_DEFAULT_CONTEXT_DIR` — clone destination (default `.context`)
+- `CTXCLONE_VSCODE_SOURCE_ROOT` — when set, `<root>/<repo>/.vscode` is copied into each new clone
+
 ## Refreshing the repo cache
 
 ```zsh
-ctxclone-refresh
+ctxclone-refresh [org]
 ```
 
-This re-fetches the focaldata repo list from GitHub. The cache expires automatically after 24 hours.
+This re-fetches the repo list from GitHub. The cache expires automatically after 24 hours.
 
 ## Notes
 
 - Cloned repos land in `.context/` — this directory is typically gitignored and is purely for agent context
-- The `focaldata` org base URL is hardcoded in the plugin (`https://github.com/focaldata`)
 - Requires `gh` CLI to be authenticated for cache/completion to work
